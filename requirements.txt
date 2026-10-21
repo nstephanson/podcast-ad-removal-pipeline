@@ -1,0 +1,10 @@
+# Core dependencies (see README.md for setup notes)
+faster-whisper
+PyYAML
+mutagen
+numpy
+scikit-learn
+python_speech_features
+# Only needed by detect_narrative_breaks, which is currently NOT wired
+# into detection. Install it if you plan to wire that method in.
+sentence-transformers
