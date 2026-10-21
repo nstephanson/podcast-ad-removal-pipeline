@@ -1,0 +1,24 @@
+# Podcast ad-removal pipeline configuration.
+# Each podcast gets an id; the pipeline runs with --podcast <id>.
+# Add new podcasts here — no code changes needed.
+
+github_owner: nstephanson
+github_repo: Clean-Podcasts
+
+podcasts:
+  security-now:
+    name: "Security Now"
+    feed_url: "https://feeds.twit.tv/sn.xml"
+    github_feed_path: "feeds/Security-Now"
+    # house plugs cut like sponsor ads (Nathan 2026-10-07)
+    house_plugs:
+      - label: "Club TWiT"
+        variants: ["club twit", "clubtwit"]
+  unsubscribe:
+    name: "Unsubscribe Podcast"
+    feed_url: "https://feeds.megaphone.fm/UG3792007027"
+    github_feed_path: "feeds/Unsubscribe-Podcast"
+  lore:
+    name: "Lore"
+    feed_url: "https://rss.libsyn.com/shows/65267/destinations/259905.xml"
+    github_feed_path: "feeds/Lore"
