@@ -90,6 +90,14 @@ Notes:
 - `detect_narrative_breaks` (sentence-embedding narrative jumps) is defined
   in `run_pipeline.py` but **not wired into detection**. Do not assume it
   runs.
+- **Domain-stem matching (2026-10-22):** sponsor variants include the bare
+  domain stem, so dotted domains with modern TLDs (`canary.tools`) match
+  the spoken brand word. SN 1101's Thinkst Canary read was missed because
+  the variant set contained only `canary.tools` / `canary tools`, which
+  never match transcript tokens (Whisper splits spoken URLs into separate
+  words, and may mangle the TLD). The TLD-strip lists in
+  `extract_sponsors` and `find_url_mentions` must stay in sync — a missing
+  TLD is a silent miss.
 - **Dynamic ads:** two downloads of one episode differ; transcript
   differences over 20s reveal the ad slots, which are consistent across
   downloads. Slot positions map via offset subtraction (costs 2x
