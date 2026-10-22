@@ -244,8 +244,21 @@ def extract_sponsors(description_html):
         text = re.sub(r"<[^>]+>", "", m.group(1)).strip().lower()
         text = re.sub(r"^https?://(www\.)?", "", text)
         text = text.split("/")[0]
-        root = re.sub(r"\.(com|net|org|io|ai|tv|co|us)$", "", text)
+        # NOTE: keep this TLD list in sync with the plain-text branch below
+        # and with find_url_mentions' tlds. Missing a TLD is a silent miss:
+        # SN 1101 (2026-10-22) — "canary.tools" kept its ".tools" suffix, so
+        # the variant set never contained the spoken word "canary" and all
+        # methods reported 0 mentions despite 16+ spoken mentions.
+        root = re.sub(r"\.(com|net|org|io|ai|tv|co|us|tools|app|dev|xyz|online|store|tech|site|cloud|me|cc|gg|life|world|news|media|agency|digital|solutions|systems|network|security)$", "", text)
         variants = {root, root.replace(".", " "), root.replace("-", " ")}
+        # Bare domain stem: the host says "Canary", not "canary.tools" —
+        # and Whisper tokenizes spoken URLs into separate words (and may
+        # mangle the TLD: "canary.tools" -> "canary" ".tool"). Without the
+        # stem, a dotted-domain sponsor matches nothing. Only for stems of
+        # 4+ chars; the common-word filter below still drops generic stems.
+        stem = root.split(".")[0] if "." in root else ""
+        if len(stem) >= 4:
+            variants.add(stem)
         # strip common marketing prefixes so the spoken brand is matched,
         # not just the URL token (2026-10-21: "joindeleteme" only matched
         # the URL near the end of the SN 1101 DeleteMe read, so no opening
@@ -297,7 +310,9 @@ def extract_sponsors(description_html):
                                          "facebook", "youtube", "patreon", "pepperbox")):
                 continue
             host = domain.split("/")[0]
-            root = re.sub(r"\.(com|net|org|io|ai|tv|co|us)$", "", host)
+            # Same extended TLD list as the sponsored-links branch above;
+            # see the SN 1101 note there about silent misses.
+            root = re.sub(r"\.(com|net|org|io|ai|tv|co|us|tools|app|dev|xyz|online|store|tech|site|cloud|me|cc|gg|life|world|news|media|agency|digital|solutions|systems|network|security)$", "", host)
             # strip common marketing prefixes (drink, get, try, take, shop, join)
             root_stripped = re.sub(r"^(drink|get|try|take|shop|join)", "", root)
             if not root or len(root) < 2:
@@ -305,6 +320,12 @@ def extract_sponsors(description_html):
             # find a display name containing the root, for a nicer label
             label = root
             variants = {root}
+            # Bare domain stem (same reason as the sponsored-links branch):
+            # the host says the stem, and Whisper tokenizes spoken URLs into
+            # separate words. Only for stems of 4+ chars.
+            stem = root.split(".")[0] if "." in root else ""
+            if len(stem) >= 4:
+                variants.add(stem)
             # only use stripped variant if it's a plausible word (4+ chars)
             # e.g., "takeultra"->"ultra" yes, "shopify"->"ify" no
             if (root_stripped and root_stripped != root
@@ -1173,7 +1194,12 @@ def find_url_mentions(nw):
     An ad anchor requires BOTH a call-to-action phrase AND a nearby URL.
     This filters out URLs mentioned in normal content.
     """
-    tlds = {"com", "net", "org", "io", "tv", "co", "ai", "me"}
+    # NOTE: keep in sync with extract_sponsors' TLD lists. A missing TLD is
+    # a silent miss: SN 1101 (2026-10-22) — the spoken "canary.tools" URL
+    # produced no URL anchor because "tools" was not in this set.
+    tlds = {"com", "net", "org", "io", "tv", "co", "ai", "me", "tools",
+            "app", "dev", "xyz", "online", "store", "tech", "site",
+            "cloud", "cc", "gg", "life", "world", "news", "media"}
     cta_phrases = [
         ("go", "to"), ("visit",), ("check", "out"), ("head", "to"),
         ("head", "over", "to"), ("give", "it", "a", "try", "at"),
