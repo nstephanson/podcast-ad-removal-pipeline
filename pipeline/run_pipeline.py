@@ -687,7 +687,14 @@ def detect_ad_blocks(words, sponsors, silences, mp3_path=None, chapters=None):
       (no opening cue). Low-confidence: heat-map votes only, never cuts
       alone (2026-10-14; Unsubscribe 268 DOSE/AG1 were silently dropped)
 
-    Returns [(start, end, label)]."""
+    Returns (blocks, suspects). Suspects are low-confidence candidates
+    (voice, cluster-popular, brand-orphan) that did NOT become cut blocks:
+    plausible ad-length segments the pipeline was unsure about. They are
+    packaged into a suspect reel (2026-10-22, per Nathan) so he reviews
+    minutes of uncertain audio instead of the whole episode. A suspect
+    must not overlap a cut block — an overhang of a cut ad is not a
+    separate suspect.
+    """
     # Run each method independently, collecting (start, end, label, method)
     candidates = []
     candidates.extend([(s, e, l, 'cta') for s, e, l in _method_cta(words, sponsors, silences)])
@@ -701,7 +708,7 @@ def detect_ad_blocks(words, sponsors, silences, mp3_path=None, chapters=None):
         candidates.extend([(s, e, l, 'voice') for s, e, l in _method_voice(words, mp3_path)])
 
     if not candidates:
-        return []
+        return [], []
 
     # Build heat map: per-second vote counts
     duration = int(words[-1][0]) + 1
@@ -757,19 +764,34 @@ def detect_ad_blocks(words, sponsors, silences, mp3_path=None, chapters=None):
             blocks.append((s, e, label))
             log(f"  single-method '{label}': {method} {s:.1f}s-{e:.1f}s ({dur:.0f}s)")
 
-    # Log low-confidence cluster-popular hits for Nathan's review
-    # (not auto-cut unless they got 2+ heat-map votes)
+    # Suspect reel (2026-10-22, per Nathan): low-confidence candidates
+    # that did not become cut blocks. Replaces the old cluster-popular
+    # LOW-CONFIDENCE log lines — the suspect reel is now the surface
+    # where these get reviewed.
+    suspects = []
     for s, e, label, method in candidates:
-        if method == 'cluster-popular':
-            dur = e - s
-            if not (MIN_AD_LEN <= dur <= MAX_AD_LEN):
-                continue
-            if any(s < be and e > bs for bs, be, _ in blocks):
-                continue
-            log(f"  LOW-CONFIDENCE '{label}': cluster-popular {s:.1f}s-{e:.1f}s ({dur:.0f}s) — not cut (single vote)")
+        if method not in ('voice', 'cluster-popular', 'brand-orphan'):
+            continue
+        dur = e - s
+        if not (MIN_AD_LEN <= dur <= MAX_AD_LEN):
+            continue
+        if any(s < be and e > bs for bs, be, _ in blocks):
+            continue
+        suspects.append((s, e, f"{method}:{label}"))
+        log(f"  SUSPECT '{label}': {method} {s:.1f}s-{e:.1f}s ({dur:.0f}s) — not cut (single vote)")
+    # Merge overlapping suspects, keeping the first label
+    suspects.sort()
+    merged = []
+    for s, e, l in suspects:
+        if merged and s <= merged[-1][1]:
+            ps, pe, pl = merged[-1]
+            merged[-1] = (ps, max(pe, e), pl)
+        else:
+            merged.append((s, e, l))
+    suspects = merged
 
     blocks.sort()
-    return [(s, e, l) for s, e, l in blocks]
+    return [(s, e, l) for s, e, l in blocks], suspects
 
 
 def _method_cta(words, sponsors, silences):
@@ -1738,6 +1760,52 @@ def write_feed(state, site_dir, original_xml):
             if item_end != -1:
                 insert_pos = item_end + len("</item>")
                 feed = feed[:insert_pos] + "\n" + reel_item + feed[insert_pos:]
+    # Insert unedited-audit items after their main episodes (2026-10-22:
+    # Nathan audits a published episode for missed ads by listening to
+    # the original). The main cleaned item is untouched; the audit copy
+    # is a separate bonus item with its own guid so podcast apps treat it
+    # as a distinct episode. Removed by clearing unedited_url from state.
+    for guid, ep in cleaned.items():
+        if not ep.get("unedited_url"):
+            continue
+        unedited_guid = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", guid) + "-unedited"
+        raw_title = f"[UNEDITED AUDIT] {ep['title']}"
+        unedited_title = (raw_title.replace("&", "&amp;")
+                                   .replace("<", "&lt;")
+                                   .replace(">", "&gt;"))
+        unedited_secs = ep.get("unedited_seconds")
+        if unedited_secs:
+            unedited_dur = (f"{int(unedited_secs) // 3600}:"
+                            f"{(int(unedited_secs) % 3600) // 60:02d}:"
+                            f"{int(unedited_secs) % 60:02d}")
+        else:
+            unedited_dur = ""
+        unedited_desc = (
+            f"UNEDITED original audio for \"{ep['title']}\" — published "
+            f"for ad audit. This copy has NO ads removed; the cleaned "
+            f"version is the main episode item."
+        )
+        unedited_desc = unedited_desc.replace("]]>", "]]>&gt;")
+        unedited_item = (
+            f"<item><title>{unedited_title}</title>"
+            f"<description><![CDATA[{unedited_desc}]]></description>"
+            f"<enclosure url=\"{ep['unedited_url']}\" length=\"{ep.get('unedited_bytes', 0)}\" type=\"audio/mpeg\"/>"
+            f"<guid isPermaLink=\"false\">{unedited_guid}</guid>"
+            f"<pubDate>{ep.get('pubDate', '')}</pubDate>"
+            f"<itunes:duration>{unedited_dur}</itunes:duration>"
+            f"<itunes:episodeType>bonus</itunes:episodeType>"
+            f"<itunes:explicit>yes</itunes:explicit>"
+            f"</item>\n"
+        )
+        guid_marker = guid
+        guid_pos = feed.find(guid_marker + "</guid>")
+        if guid_pos == -1:
+            guid_pos = feed.find(guid_marker)
+        if guid_pos != -1:
+            item_end = feed.find("</item>", guid_pos)
+            if item_end != -1:
+                insert_pos = item_end + len("</item>")
+                feed = feed[:insert_pos] + "\n" + unedited_item + feed[insert_pos:]
     # Point the feed's self-identifier at our copy, or podcast apps revert
     # the subscription URL to the original feed address.
     feed = re.sub(
@@ -1782,7 +1850,7 @@ def process_episode(item, state):
     chapters = _merge_chapters(id3_chapters, item.get("rss_chapters", []))
     if chapters:
         log(f"{len(chapters)} chapters available for chapter-marker detection")
-    blocks = detect_ad_blocks(words, sponsors, silences, mp3_path, chapters)
+    blocks, suspects = detect_ad_blocks(words, sponsors, silences, mp3_path, chapters)
     missed = check_missed_sponsors(words, sponsors, blocks)
     if not sponsors:
         log("no sponsors listed in description; sponsor-independent detection only")
@@ -1811,6 +1879,16 @@ def process_episode(item, state):
         ads_reel_path = os.path.join(SITE_DIR, ads_reel_name)
         build_ads_reel(mp3_path, blocks, ads_reel_path, work)
         log(f"ads-reel: {ads_reel_name} ({len(blocks)} segments)")
+    # Build suspect reel (2026-10-22, per Nathan): segments the pipeline
+    # was unsure about, pasted chronologically. Nathan reviews these
+    # instead of the whole episode. NOT a feed item — uploaded as a
+    # release asset and linked in the nightly message.
+    suspects_reel_name = None
+    if suspects:
+        suspects_reel_name = f"{slug}-suspects.mp3"
+        suspects_reel_path = os.path.join(SITE_DIR, suspects_reel_name)
+        build_ads_reel(mp3_path, suspects, suspects_reel_path, work)
+        log(f"suspects-reel: {suspects_reel_name} ({len(suspects)} segments)")
     # Chapters: remap pre-existing ones for the cuts, or auto-generate.
     # (words are in the original timeline; remap shifts them to cleaned time.)
     # Reuses the ID3 chapters read before detection (no second MP3 scan).
@@ -1835,6 +1913,7 @@ def process_episode(item, state):
         "removed_seconds": removed,
         "blocks": [{"start": s, "end": e, "sponsor": l} for s, e, l in blocks],
         "missed_sponsors": missed,
+        "suspects": [{"start": s, "end": e, "label": l} for s, e, l in suspects],
     }
     with open(os.path.join(work, "report.json"), "w") as f:
         json.dump(report, f, indent=2)
@@ -1849,6 +1928,9 @@ def process_episode(item, state):
         "missed_sponsors": [m["label"] for m in missed],
         "ads_reel": ads_reel_name,
         "ads_reel_bytes": os.path.getsize(os.path.join(SITE_DIR, ads_reel_name)) if ads_reel_name else 0,
+        "suspects": [{"label": l, "seconds": e - s} for s, e, l in suspects],
+        "suspects_reel": suspects_reel_name,
+        "suspects_reel_bytes": os.path.getsize(os.path.join(SITE_DIR, suspects_reel_name)) if suspects_reel_name else 0,
     }
     save_state(state)
     log(f"done: {item['title']} — removed {removed:.0f}s in {len(blocks)} blocks")
