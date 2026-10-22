@@ -18,6 +18,19 @@ this repo in the same step (see "Keeping this repo in sync").
 - **"Ads cut from \<episode\>" bonus feed item** — the QA reel: cut segments
   pasted in chronological order, one chapter per clip, clips listed with
   timestamps in the description.
+- **Suspect reel** (2026-10-22) — `<slug>-suspects.mp3`, a release asset (NOT
+  a feed item): segments the pipeline was unsure about — low-confidence
+  candidates (voice anomalies, cluster-popular hits, brand-orphan windows)
+  that did not become cut blocks — pasted chronologically, one chapter per
+  segment. Linked in the nightly message so Nathan reviews minutes of
+  uncertain audio instead of the whole episode, and says which suspects
+  are ads. Never cut from the suspect reel without his say-so.
+- **Unedited audit item** (2026-10-22) — when a state entry carries
+  `unedited_url`, `write_feed` inserts a "[UNEDITED AUDIT] \<episode\>" bonus
+  item (guid suffixed `-unedited`) pointing at the original audio,
+  alongside the untouched cleaned item. Used when Nathan audits a published
+  episode for missed ads. Clearing `unedited_url` from state drops the item
+  on the next feed regeneration.
 - **Edits report** in the episode description (plain text, at the TOP below
   a dashes dividing line, each removed segment with duration).
 - **Regenerated RSS feed** (`feeds/<Podcast-Name>` in the Clean-Podcasts
@@ -82,8 +95,8 @@ maximum.
 | `duplicate` | Verbatim-repeated segments ≥15s (8-word shingles); inserted ads run 2+ times | High — cuts alone |
 | `chapter` | Publisher-labeled ad chapters (`[Ad]`, `Ad:`, `Advertisement`, `Sponsor`, `Commercial`, `Ad break`) from ID3 tags and RSS `<psc:chapter>` | High — cuts alone |
 | `brand-orphan` | Sponsor mentions the brand method found but could not expand into a segment (no opening cue) | Low — heat-map votes only, never cuts alone |
-| `cluster-popular` | Dense mentions of popular sponsors NOT in the description | Low — heat-map votes only; single-vote hits are reported in the QA reel, never auto-cut |
-| `voice` | Host-voice anomaly (MFCC profile distance) | Review only — logged, never cuts alone |
+| `cluster-popular` | Dense mentions of popular sponsors NOT in the description | Low — heat-map votes only; single-vote hits go to the suspect reel, never auto-cut |
+| `voice` | Host-voice anomaly (MFCC profile distance) | Review only — suspect reel, never cuts alone |
 
 Notes:
 
