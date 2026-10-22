@@ -85,6 +85,15 @@ def main():
             ep["ads_reel_bytes"] = reel_asset["size"]
             log_msg = f"ads-reel uploaded: {ep['ads_reel']}"
             print(log_msg)
+    # 2c. upload suspect reel if present (2026-10-22, per Nathan).
+    # Not a feed item — linked in the nightly message for his review.
+    if ep.get("suspects_reel"):
+        sus_path = os.path.join(rp.SITE_DIR, ep["suspects_reel"])
+        if os.path.exists(sus_path):
+            sus_asset = gh("UPLOAD", rel["upload_url"], sus_path, "audio/mpeg")
+            ep["suspects_url"] = sus_asset["browser_download_url"]
+            ep["suspects_bytes"] = sus_asset["size"]
+            print(f"suspects-reel uploaded: {ep['suspects_reel']}")
     save_state(state)
     # 3. regenerate feed
     xml = fetch_feed()
