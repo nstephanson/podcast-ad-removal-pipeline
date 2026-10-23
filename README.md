@@ -22,9 +22,11 @@ this repo in the same step (see "Keeping this repo in sync").
   a feed item): segments the pipeline was unsure about — low-confidence
   candidates (voice anomalies, cluster-popular hits, brand-orphan windows)
   that did not become cut blocks — pasted chronologically, one chapter per
-  segment. Linked in the nightly message so Nathan reviews minutes of
-  uncertain audio instead of the whole episode, and says which suspects
-  are ads. Never cut from the suspect reel without his say-so.
+  segment. Delivery (2026-10-22): the nightly worker sends the reel file to
+  the podcast side chat, where it is posted as a playable audio attachment
+  — never as a GitHub link in the main chat, because release links force a
+  download instead of playing. Suspect timestamps are given in
+  minute:seconds. Never cut from the suspect reel without Nathan's say-so.
 - **Unedited audit item** (2026-10-22) — when a state entry carries
   `unedited_url`, `write_feed` inserts a "[UNEDITED AUDIT] \<episode\>" bonus
   item (guid suffixed `-unedited`) pointing at the original audio,
